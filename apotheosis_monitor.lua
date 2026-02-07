@@ -1,6 +1,6 @@
---[[ APOTHEOSIS SECRET MONITOR - FINAL STABLE ]]
+--[[ APOTHEOSIS SECRET MONITOR - OPTIMIZED CLEAN VERSION ]]
 
--- ===== SAFETY CHECK =====
+-- ===== ANTI DOUBLE EXECUTE =====
 if _G.ApotheosisLoaded then
     game:GetService("StarterGui"):SetCore("SendNotification", {
         Title = "Apotheosis",
@@ -11,77 +11,114 @@ if _G.ApotheosisLoaded then
 end
 _G.ApotheosisLoaded = true
 
--- ===== GET WEBHOOK =====
+-- ===== WEBHOOK FROM EXECUTOR =====
 local WEBHOOK_URL = getgenv().APOTHEOSIS_WEBHOOK
 if not WEBHOOK_URL or WEBHOOK_URL == "" then
-    warn("Webhook kosong!")
+    warn("Webhook URL belum di-set!")
     return
+end
+
+-- ===== SECRET FISH LIST =====
+local secret_list = {
+    "Blob Shark","Ghost Shark","Skeleton Narwhal","Crystal Crab","Orca",
+    "Ghost Worm Fish","Worm Fish","Megalodon","Lochness Monster","Monster Shark",
+    "Eerie Shark","Great Whale","Frostborn Shark","Scare","Queen Crab",
+    "King Crab","Cryoshade Glider","Panther Eel","Giant Squid","Depthseeker Ray",
+    "Robot Kraken","Mosasaur Shark","King Jelly","Bone Whale","Elshark Gran Maja",
+    "Ancient Whale","Gladiator Shark","Ancient Lochness Monster","Cursed Kraken",
+    "Elpirate Gran Maja","Ancient Magma Whale","Pirate Megalodon","Thin Armor Shark",
+    "Viridis Lurker"
+}
+
+-- ===== BUILD LOOKUP (OPTIMIZED) =====
+local secret_lookup = {}
+for _, fish in ipairs(secret_list) do
+    secret_lookup[fish:lower()] = true
 end
 
 -- ===== SERVICES =====
 local TextChatService = game:GetService("TextChatService")
 local HttpService = game:GetService("HttpService")
-local StarterGui = game:GetService("StarterGui")
-local request = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request)
 
--- ===== UI INDICATOR =====
-local gui = Instance.new("ScreenGui")
-gui.Name = "ApotheosisIndicator"
-gui.Parent = game:GetService("CoreGui")
+local request =
+    (syn and syn.request)
+    or (http and http.request)
+    or http_request
+    or (fluxus and fluxus.request)
 
-local label = Instance.new("TextLabel")
-label.Parent = gui
-label.Size = UDim2.new(0, 220, 0, 35)
-label.Position = UDim2.new(0, 10, 0, 10)
-label.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-label.BackgroundTransparency = 0.15
-label.Text = "Apotheosis ACTIVE ✅"
-label.Font = Enum.Font.GothamBold
-label.TextColor3 = Color3.new(1,1,1)
-label.TextScaled = true
+-- ===== UTIL =====
+local function stripRichText(text)
+    return text:gsub("<[^>]->", "")
+end
 
--- ===== WEBHOOK FUNCTION =====
+local function getWIBTime()
+    return os.date("%H:%M WIB")
+end
+
 local function sendWebhook(text)
     request({
         Url = WEBHOOK_URL,
         Method = "POST",
         Headers = {["Content-Type"] = "application/json"},
-        Body = HttpService:JSONEncode({
-            content = text,
-            username = "Apotheosis Monitor"
-        })
+        Body = HttpService:JSONEncode({ content = text })
     })
 end
 
--- ===== TEST WEBHOOK (INI KUNCI) =====
-sendWebhook("✅ **Apotheosis aktif & terhubung!**\nMonitoring Secret Fish dimulai.")
-
--- ===== LIST IKAN SECRET =====
-local secret_list = {
-    "Blob Shark","Ghost Shark","Skeleton Narwhal","Crystal Crab","Orca",
-    "Ghost Worm Fish","Worm Fish","Megalodon","Lochness Monster","Monster Shark",
-    "Eerie Shark","Great Whale","Frostborn Shark","Queen Crab","King Crab",
-    "Giant Squid","Robot Kraken","Ancient Whale","Cursed Kraken"
-}
-
--- ===== CHAT MONITOR =====
+-- ===== CHAT LISTENER =====
 TextChatService.MessageReceived:Connect(function(msg)
-    if msg.TextSource ~= nil then return end -- system only
+    -- 1. Skip chat player (hemat CPU)
+    if msg.TextSource ~= nil then return end
 
-    local text = msg.Text:lower()
-    if not text:find("obtained") then return end
+    -- 2. Strip rich text
+    local clean = stripRichText(msg.Text)
 
-    for _, fish in pairs(secret_list) do
-        if text:find(fish:lower()) then
-            sendWebhook("💎 **SECRET DETECTED!**\n" .. msg.Text)
+    -- 3. Buang prefix [Server]:
+    clean = clean:gsub("^%[Server%]:%s*", "")
+
+    local lower = clean:lower()
+
+    -- 4. Harus ada obtained
+    if not lower:find("obtained") then return end
+
+    -- 5. Cek ikan secret
+    local matchedFish
+    for fish in pairs(secret_lookup) do
+        if lower:find(fish) then
+            matchedFish = fish
             break
         end
     end
+    if not matchedFish then return end
+
+    -- 6. Parse data utama
+    local player, fishName, weight =
+        clean:match("(.+) obtained (.+) %((.+)kg%)")
+
+    if not player or not fishName then return end
+
+    local chance = clean:match("1 in ([%d%.KkMm]+) chance")
+
+    -- 7. Kirim ke Discord (PLAIN TEXT)
+    sendWebhook(
+        "💎 SECRET DETECTED\n"
+        .. player .. " obtained " .. fishName .. " (" .. (weight or "?") .. "kg)\n"
+        .. (chance and ("Chance: 1 in " .. chance .. "\n") or "")
+        .. "Time: " .. getWIBTime()
+    )
 end)
 
-StarterGui:SetCore("SendNotification", {
-    Title = "Apotheosis",
-    Text = "Secret monitor AKTIF ✅",
-    Duration = 4
-})
+-- ===== UI INDICATOR (DELAYED) =====
+task.delay(0.5, function()
+    local gui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+    gui.Name = "ApotheosisIndicator"
 
+    local label = Instance.new("TextLabel", gui)
+    label.Size = UDim2.new(0, 200, 0, 36)
+    label.Position = UDim2.new(0, 10, 0, 10)
+    label.BackgroundColor3 = Color3.fromRGB(0, 200, 200)
+    label.BackgroundTransparency = 0.2
+    label.Text = "Apotheosis ON ✅"
+    label.Font = Enum.Font.GothamBold
+    label.TextColor3 = Color3.new(1,1,1)
+    label.TextScaled = true
+end)
